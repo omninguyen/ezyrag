@@ -28,8 +28,11 @@ import org.youngmonkeys.ezyrag.service.RagDataChunkService;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static com.tvd12.ezyfox.io.EzyLists.newArrayList;
+import static com.tvd12.ezyfox.io.EzyMaps.newHashMap;
 
 @AllArgsConstructor
 public class RagDatabaseDataRetriever implements RagDataRetriever {
@@ -42,25 +45,35 @@ public class RagDatabaseDataRetriever implements RagDataRetriever {
     public List<RagDocumentModel> retrieve(
         List<RagVectorSearchResultModel> result
     ) {
+        if (result.isEmpty()) {
+            return Collections.emptyList();
+        }
         List<Long> chunkIds = newArrayList(
             result,
             RagVectorSearchResultModel::getChunkId
         );
-        List<RagDataChunkModel> chunks = dataChunkService
-            .getDataChunksByIds(chunkIds);
+        Map<Long, RagDataChunkModel> chunkById = newHashMap(
+            dataChunkService.getDataChunksByIds(chunkIds),
+            RagDataChunkModel::getId
+        );
         Map<Long, Map<String, String>> metadataMapByChunkId =
             dataChunkMetaService.getDataChunkMetaMapByIds(
                 chunkIds
             );
-        return newArrayList(chunks, it ->
-            modelToModelConverter.toDocument(
-                it,
-                metadataMapByChunkId.getOrDefault(
-                    it.getId(),
-                    Collections.emptyMap()
+        return result
+            .stream()
+            .map(it -> chunkById.get(it.getChunkId()))
+            .filter(Objects::nonNull)
+            .map(it ->
+                modelToModelConverter.toDocument(
+                    it,
+                    metadataMapByChunkId.getOrDefault(
+                        it.getId(),
+                        Collections.emptyMap()
+                    )
                 )
             )
-        );
+            .collect(Collectors.toList());
     }
 
     @Override
